@@ -512,7 +512,7 @@ end
 -- Show a brief about dialog.
 function QuickRSSUI:_openAbout()
     UIManager:show(InfoMessage:new{
-        text = "QuickRSS v0.1.0\n"
+        text = "QuickRSS v0.2.0\n"
             .. "by qewer33\n\n"
             .. "A fast, standalone RSS reader for KOReader.\n\n"
             .. "Feeds are stored in quickrss/feeds.opml in your KOReader "
