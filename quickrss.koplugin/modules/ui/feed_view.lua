@@ -102,9 +102,11 @@ local Screen = Device.screen
 --   footer        (prev chevron | "Page N of M" | next chevron)
 -- ─────────────────────────────────────────────────────────────────────────────
 local QuickRSSUI = InputContainer:extend{
-    name      = "quickrss_ui",
-    show_page = 1,
-    articles  = {},   -- populated after the async fetch+parse completes
+    name        = "quickrss_ui",
+    show_page   = 1,
+    articles    = {},     -- all articles (unfiltered)
+    filtered    = nil,    -- filtered subset, or nil when showing all
+    filter_feed = nil,    -- name of the active feed filter, or nil for all
 }
 
 function QuickRSSUI:init()
@@ -141,6 +143,11 @@ function QuickRSSUI:init()
     local title_h = self.title_bar:getSize().h
 
     -- ── Pagination footer ────────────────────────────────────────────────────
+    self.filter_button = Button:new{
+        text       = Icons.FILTER .. "  " .. _("All Feeds"),
+        callback   = function() self:_openFilterDialog() end,
+        bordersize = 0,
+    }
     self.prev_button = Button:new{
         icon      = "chevron.left",
         callback  = function() self:prevPage() end,
@@ -152,23 +159,33 @@ function QuickRSSUI:init()
         bordersize = 0,
     }
     self.page_label = TextWidget:new{
-        -- Non-empty placeholder so the HorizontalGroup caches a non-zero width
-        -- from the start; setText() resets the TextWidget's own size cache but
-        -- does NOT invalidate the parent HorizontalGroup's cached offsets.
-        -- We reset footer_group manually whenever we call setText().
         text = _("Page – of –"),
         face = Font:getFace("cfont", 16),
     }
 
     local footer_h = self.prev_button:getSize().h + PAD * 2
 
-    self.footer_group = HorizontalGroup:new{
+    self.page_nav = HorizontalGroup:new{
         align = "center",
         self.prev_button,
         HorizontalSpan:new{ width = PAD * 3 },
         self.page_label,
         HorizontalSpan:new{ width = PAD * 3 },
         self.next_button,
+    }
+
+    -- Footer: filter button left-aligned, page nav right-aligned.
+    -- A flexible spacer pushes them apart.
+    local filter_pad = PAD
+    local nav_w = self.page_nav:getSize().w
+    local filter_w = self.filter_button:getSize().w
+    local spacer_w = math.max(0, screen_w - filter_w - nav_w - filter_pad - PAD)
+    self.footer_group = HorizontalGroup:new{
+        align = "center",
+        HorizontalSpan:new{ width = filter_pad },
+        self.filter_button,
+        HorizontalSpan:new{ width = spacer_w },
+        self.page_nav,
     }
     local footer = CenterContainer:new{
         dimen = Geom:new{ w = screen_w, h = footer_h },
@@ -221,9 +238,8 @@ function QuickRSSUI:_loadFromCache()
         self:_showStatus(_("No articles yet.\nOpen the menu to fetch."))
     else
         sortByDate(articles)
-        self.articles  = articles
-        self.show_page = 1
-        self:_populateItems()
+        self.articles = articles
+        self:_applyFilter()
     end
 end
 
@@ -342,9 +358,8 @@ function QuickRSSUI:_fetch()
             if #articles == 0 then
                 self:_showStatus(_("No articles found.\nCheck your feeds."))
             else
-                self.articles  = articles
-                self.show_page = 1
-                self:_populateItems()
+                self.articles = articles
+                self:_applyFilter()
 
                 -- Notify about partial failures (some feeds succeeded, some didn't)
                 if errors and #errors > 0 then
@@ -460,8 +475,14 @@ function QuickRSSUI:_clearCache()
         ok_text = _("Clear"),
         ok_callback = function()
             Cache.clearCache()
-            self.articles  = {}
-            self.show_page = 1
+            self.articles    = {}
+            self.filtered    = nil
+            self.filter_feed = nil
+            self.show_page   = 1
+            self.filter_button:setText(
+                Icons.FILTER .. "  " .. _("All Feeds"),
+                self.filter_button.width)
+            self:_rebuildFooter()
             self:_showStatus(_("Cache cleared.\nOpen the menu to fetch."))
         end,
     })
@@ -501,9 +522,85 @@ function QuickRSSUI:_openAbout()
     })
 end
 
+-- Apply the current feed filter and rebuild the displayed list.
+function QuickRSSUI:_applyFilter()
+    if self.filter_feed then
+        self.filtered = {}
+        for _, art in ipairs(self.articles) do
+            if art.source == self.filter_feed then
+                table.insert(self.filtered, art)
+            end
+        end
+    else
+        self.filtered = nil
+    end
+    self.show_page = 1
+    self:_populateItems()
+end
+
+-- Open a dialog to pick which feed to show (or all).
+function QuickRSSUI:_openFilterDialog()
+    -- Collect unique feed names from articles
+    local seen = {}
+    local feed_names = {}
+    for _, art in ipairs(self.articles) do
+        if art.source and not seen[art.source] then
+            seen[art.source] = true
+            table.insert(feed_names, art.source)
+        end
+    end
+    table.sort(feed_names)
+
+    local RadioButtonWidget = require("ui/widget/radiobuttonwidget")
+    local radio_buttons = {
+        {{ text = _("All Feeds"), provider = "", checked = (self.filter_feed == nil) }},
+    }
+    for _, name in ipairs(feed_names) do
+        table.insert(radio_buttons, {
+            { text = name, provider = name, checked = (self.filter_feed == name) },
+        })
+    end
+
+    UIManager:show(RadioButtonWidget:new{
+        title_text = _("Filter by Feed"),
+        cancel_text = _("Close"),
+        ok_text = _("Apply"),
+        radio_buttons = radio_buttons,
+        callback = function(radio)
+            if radio.provider == "" then
+                self.filter_feed = nil
+                self.filter_button:setText(
+                    Icons.FILTER .. "  " .. _("All Feeds"))
+            else
+                self.filter_feed = radio.provider
+                self.filter_button:setText(
+                    Icons.FILTER .. "  " .. radio.provider)
+            end
+            self:_rebuildFooter()
+            self:_applyFilter()
+        end,
+    })
+end
+
+-- Rebuild footer layout after filter button text changes.
+function QuickRSSUI:_rebuildFooter()
+    local screen_w = Screen:getWidth()
+    local filter_pad = PAD
+    local nav_w = self.page_nav:getSize().w
+    local filter_w = self.filter_button:getSize().w
+    local spacer_w = math.max(0, screen_w - filter_w - nav_w - filter_pad - PAD)
+
+    self.footer_group:clear()
+    self.footer_group:resetLayout()
+    table.insert(self.footer_group, HorizontalSpan:new{ width = filter_pad })
+    table.insert(self.footer_group, self.filter_button)
+    table.insert(self.footer_group, HorizontalSpan:new{ width = spacer_w })
+    table.insert(self.footer_group, self.page_nav)
+end
+
 -- Rebuild article_list for the current page and request a display refresh.
 function QuickRSSUI:_populateItems()
-    local articles = self.articles
+    local articles = self.filtered or self.articles
     local total    = #articles
 
     self.pages     = math.max(1, math.ceil(total / self.items_per_page))

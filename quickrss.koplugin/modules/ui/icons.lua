@@ -10,4 +10,5 @@ return {
     CLEAR    = "\u{f1f8}",  -- 🗑  trash can
     BOOK     = "\u{f02d}",  -- 📖 open book  (article reader, future use)
     INFO     = "\u{f05a}",  -- ℹ  info circle
+    FILTER   = "\u{f0b0}",  -- 🔽 funnel / filter
 }
