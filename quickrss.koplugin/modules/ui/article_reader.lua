@@ -23,6 +23,9 @@ local Images           = require("modules/data/images")
 local ImageViewer      = require("ui/widget/imageviewer")
 local InputContainer   = require("ui/widget/container/inputcontainer")
 local LineWidget       = require("ui/widget/linewidget")
+local ButtonDialog     = require("ui/widget/buttondialog")
+local Font             = require("ui/font")
+local Icons            = require("modules/ui/icons")
 local QRMessage        = require("ui/widget/qrmessage")
 local ScrollHtmlWidget = require("ui/widget/scrollhtmlwidget")
 local Size             = require("ui/size")
@@ -401,12 +404,35 @@ function ArticleReader:_onLinkTapped(link)
     end
 
     if link.uri:match("^https?://") then
-        UIManager:show(QRMessage:new{
-            text   = link.uri,
-            width  = Screen:getWidth(),
-            height = Screen:getHeight(),
-        })
+        self:_showLinkMenu(link.uri)
     end
+end
+
+function ArticleReader:_showLinkMenu(url)
+    local dialog
+    dialog = ButtonDialog:new{
+        title = url,
+        title_face = Font:getFace("cfont", 14),
+        buttons = {
+            {{ text = Icons.COPY .. "  " .. _("Copy Link"), callback = function()
+                UIManager:close(dialog)
+                Device.input.setClipboardText(url)
+                local Notification = require("ui/widget/notification")
+                UIManager:show(Notification:new{
+                    text = _("Link copied to clipboard"),
+                })
+            end }},
+            {{ text = Icons.INFO .. "  " .. _("Show QR Code"), callback = function()
+                UIManager:close(dialog)
+                UIManager:show(QRMessage:new{
+                    text   = url,
+                    width  = Screen:getWidth(),
+                    height = Screen:getHeight(),
+                })
+            end }},
+        },
+    }
+    UIManager:show(dialog)
 end
 
 function ArticleReader:onClose()
