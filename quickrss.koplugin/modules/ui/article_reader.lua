@@ -113,7 +113,7 @@ body {
     line-height: %.1f;
     text-align: justify;
 }
-.content             { margin: 0 1.5em; padding-top: 0.5em; }
+.content             { margin: 0 1em 0 1.5em; padding-top: 0.5em; }
 p                    { margin: 0.6em 0; }
 h1, h2, h3, h4, h5  { font-weight: bold; margin: 0.8em 0 0.3em; }
 img                  { min-width: 40%% !important; max-width: 100%% !important; height: auto !important; display: block !important; margin: 0.5em auto !important; }
@@ -157,6 +157,7 @@ function ArticleReader:init()
         width                  = screen_w,
         title                  = self.article.title or "",
         with_bottom_line       = true,
+        bottom_v_padding       = 0,
         left_icon              = "appbar.settings",
         left_icon_tap_callback = function() self:_openReaderSettings() end,
         close_callback         = function() self:onClose() end,

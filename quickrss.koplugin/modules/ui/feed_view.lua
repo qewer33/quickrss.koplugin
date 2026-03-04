@@ -164,14 +164,24 @@ function QuickRSSUI:init()
         face = Font:getFace("cfont", 16),
     }
 
-    local footer_h = self.prev_button:getSize().h + PAD * 2
+    local btn_h = self.prev_button:getSize().h
+    local footer_h = btn_h + PAD * 2
+
+    -- Fixed-width center area so the label stays centred regardless of text length.
+    local max_label = TextWidget:new{
+        text = T(_("Page %1 of %2"), 99, 99),
+        face = Font:getFace("cfont", 16),
+    }
+    local label_area_w = max_label:getSize().w + PAD * 3
+    max_label:free()
 
     self.page_nav = HorizontalGroup:new{
         align = "center",
         self.prev_button,
-        HorizontalSpan:new{ width = PAD * 3 },
-        self.page_label,
-        HorizontalSpan:new{ width = PAD * 3 },
+        CenterContainer:new{
+            dimen = Geom:new{ w = label_area_w, h = btn_h },
+            self.page_label,
+        },
         self.next_button,
     }
 
