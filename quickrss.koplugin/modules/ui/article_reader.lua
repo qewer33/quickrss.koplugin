@@ -20,6 +20,7 @@ local GestureRange     = require("ui/gesturerange")
 local HorizontalGroup  = require("ui/widget/horizontalgroup")
 local HorizontalSpan   = require("ui/widget/horizontalspan")
 local Images           = require("modules/data/images")
+local ImageViewer      = require("ui/widget/imageviewer")
 local InputContainer   = require("ui/widget/container/inputcontainer")
 local LineWidget       = require("ui/widget/linewidget")
 local QRMessage        = require("ui/widget/qrmessage")
@@ -112,11 +113,12 @@ body {
 .content             { margin: 0 1.5em; padding-top: 0.5em; }
 p                    { margin: 0.6em 0; }
 h1, h2, h3, h4, h5  { font-weight: bold; margin: 0.8em 0 0.3em; }
-img                  { max-width: 100%%; height: auto; display: block; margin: 0.5em auto; }
+img                  { min-width: 40%% !important; max-width: 100%% !important; height: auto !important; display: block !important; margin: 0.5em auto !important; }
 ol, ul               { margin: 0.5em 0; padding: 0 1.7em; }
 li                   { margin: 0.2em 0; }
 blockquote           { margin: 0.5em 1em; }
 a                    { text-decoration: underline; }
+.img-link             { display: block !important; text-align: center !important; text-decoration: none !important; }
 .meta                { font-size: 0.85em; margin: 0 0 0.8em; }
 hr                   { border: none; border-top: 1px solid #999999; margin: 0.8em 0 1em; }
 figure               { text-align: center; margin: 0.5em 0; }
@@ -223,7 +225,9 @@ function ArticleReader:init()
         local fname = self.article.image_path:match("([^/]+)$")
         if fname then
             table.insert(content_parts,
-                '<img src="' .. fname .. '" style="width:100%">')
+                '<a class="img-link" href="quickrss-img:' .. fname .. '">'
+                .. '<img src="' .. fname .. '" style="width:100%">'
+                .. '</a>')
         end
     end
 
@@ -304,6 +308,13 @@ function ArticleReader:init()
                 body = stripImgByBase(body, fname, 1)
             end
         end
+
+        -- Wrap <img> tags in tappable links for full-screen preview.
+        body = body:gsub('(<img[^>]*src%s*=%s*")([^"]+)("[^>]*/?>)',
+            function(pre, src, post)
+                return '<a class="img-link" href="quickrss-img:' .. src .. '">'
+                    .. pre .. src .. post .. '</a>'
+            end)
     else
         -- Images disabled: strip all <img> tags (and stray </img> closers)
         -- so they don't show as broken placeholders.
@@ -376,7 +387,20 @@ function ArticleReader:_applyPrefs(prefs)
 end
 
 function ArticleReader:_onLinkTapped(link)
-    if link and link.uri and link.uri:match("^https?://") then
+    if not link or not link.uri then return end
+
+    local img_file = link.uri:match("^quickrss%-img:(.+)$")
+    if img_file then
+        local path = IMAGE_DIR .. "/" .. img_file
+        UIManager:show(ImageViewer:new{
+            file           = path,
+            fullscreen     = true,
+            with_title_bar = false,
+        })
+        return
+    end
+
+    if link.uri:match("^https?://") then
         UIManager:show(QRMessage:new{
             text   = link.uri,
             width  = Screen:getWidth(),
