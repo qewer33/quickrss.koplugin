@@ -103,11 +103,12 @@ local Screen = Device.screen
 --   footer        (prev chevron | "Page N of M" | next chevron)
 -- ─────────────────────────────────────────────────────────────────────────────
 local QuickRSSUI = InputContainer:extend{
-    name        = "quickrss_ui",
-    show_page   = 1,
-    articles    = {},     -- all articles (unfiltered)
-    filtered    = nil,    -- filtered subset, or nil when showing all
-    filter_feed = nil,    -- name of the active feed filter, or nil for all
+    name           = "quickrss_ui",
+    show_page      = 1,
+    articles       = {},     -- all articles (unfiltered)
+    filtered       = nil,    -- filtered subset, or nil when showing all
+    filter_feed    = nil,    -- name of the active feed filter, or nil for all
+    filter_unread  = false,  -- when true, show only unread articles
 }
 
 function QuickRSSUI:init()
@@ -186,7 +187,6 @@ function QuickRSSUI:init()
     }
 
     -- Footer: filter button left-aligned, page nav right-aligned.
-    -- A flexible spacer pushes them apart.
     local filter_pad = PAD
     local nav_w = self.page_nav:getSize().w
     local filter_w = self.filter_button:getSize().w
@@ -379,6 +379,26 @@ function QuickRSSUI:_fetch()
             if #articles == 0 then
                 self:_showStatus(_("No articles found.\nCheck your feeds."))
             else
+                -- Preserve read state from old articles
+                local old_read = {}
+                for _, art in ipairs(self.articles) do
+                    if art.read and art.link then old_read[art.link] = true end
+                end
+                for _, art in ipairs(articles) do
+                    if old_read[art.link] then art.read = true end
+                end
+                -- Filter out dismissed articles
+                local dismissed = Cache.loadDismissed()
+                if next(dismissed) then
+                    local kept = {}
+                    for _, art in ipairs(articles) do
+                        if not (art.link and dismissed[art.link]) then
+                            table.insert(kept, art)
+                        end
+                    end
+                    articles = kept
+                end
+                Cache.saveArticles(articles)
                 self.articles = articles
                 self:_applyFilter()
 
@@ -475,17 +495,21 @@ function QuickRSSUI:_openMenu()
                     self:_openSettings()
                 end },
             },
-            -- Bottom row: destructive action + about
+            -- Destructive actions side by side
             {
+                { text = Icons.CLEAR .. "  " .. _("Clear Read"), callback = function()
+                    UIManager:close(dialog)
+                    self:_clearReadArticles()
+                end },
                 { text = Icons.CLEAR .. "  " .. _("Clear Cache"), callback = function()
                     UIManager:close(dialog)
                     self:_clearCache()
                 end },
-                { text = Icons.INFO .. "  " .. _("About"), callback = function()
-                    UIManager:close(dialog)
-                    self:_openAbout()
-                end },
             },
+            {{ text = Icons.INFO .. "  " .. _("About"), callback = function()
+                UIManager:close(dialog)
+                self:_openAbout()
+            end }},
         },
     }
     UIManager:show(dialog)
@@ -499,15 +523,52 @@ function QuickRSSUI:_clearCache()
         ok_text = _("Clear"),
         ok_callback = function()
             Cache.clearCache()
-            self.articles    = {}
-            self.filtered    = nil
-            self.filter_feed = nil
-            self.show_page   = 1
-            self.filter_button:setText(
-                Icons.FILTER .. "  " .. _("All Feeds"),
-                self.filter_button.width)
-            self:_rebuildFooter()
+            self.articles      = {}
+            self.filtered      = nil
+            self.filter_feed   = nil
+            self.filter_unread = false
+            self.show_page     = 1
+            self:_updateFilterButton()
             self:_showStatus(_("Cache cleared.\nOpen the menu to fetch."))
+        end,
+    })
+end
+
+-- Remove all read articles from the cache and remember their links so
+-- they don't reappear on future fetches.
+function QuickRSSUI:_clearReadArticles()
+    local read_count = 0
+    for _, art in ipairs(self.articles) do
+        if art.read then read_count = read_count + 1 end
+    end
+    if read_count == 0 then
+        UIManager:show(InfoMessage:new{
+            text = _("No read articles to clear."),
+        })
+        return
+    end
+
+    local ConfirmBox = require("ui/widget/confirmbox")
+    UIManager:show(ConfirmBox:new{
+        text = T(_("Clear %1 read article(s)?\nThey won't reappear on future fetches."), read_count),
+        ok_text = _("Clear"),
+        ok_callback = function()
+            -- Add read article links to the dismissed set
+            local dismissed = Cache.loadDismissed()
+            local kept = {}
+            for _, art in ipairs(self.articles) do
+                if art.read and art.link then
+                    dismissed[art.link] = true
+                    if art.image_path then os.remove(art.image_path) end
+                else
+                    table.insert(kept, art)
+                end
+            end
+            Cache.saveDismissed(dismissed)
+            self.articles = kept
+            Cache.saveArticles(self.articles)
+            Cache.cleanOrphanedImages(self.articles)
+            self:_applyFilter()
         end,
     })
 end
@@ -546,23 +607,35 @@ function QuickRSSUI:_openAbout()
     })
 end
 
--- Apply the current feed filter and rebuild the displayed list.
-function QuickRSSUI:_applyFilter()
+-- Apply the current feed + unread filters and rebuild the displayed list.
+function QuickRSSUI:_applyFilter(keep_page)
+    local list = self.articles
     if self.filter_feed then
-        self.filtered = {}
-        for _, art in ipairs(self.articles) do
+        local by_feed = {}
+        for _, art in ipairs(list) do
             if art.source == self.filter_feed then
-                table.insert(self.filtered, art)
+                table.insert(by_feed, art)
             end
         end
-    else
-        self.filtered = nil
+        list = by_feed
     end
-    self.show_page = 1
+    if self.filter_unread then
+        local unread = {}
+        for _, art in ipairs(list) do
+            if not art.read then
+                table.insert(unread, art)
+            end
+        end
+        list = unread
+    end
+    self.filtered = (list ~= self.articles) and list or nil
+    if not keep_page then
+        self.show_page = 1
+    end
     self:_populateItems()
 end
 
--- Open a dialog to pick which feed to show (or all).
+-- Open a dialog to pick feed filter and unread toggle.
 function QuickRSSUI:_openFilterDialog()
     -- Collect unique feed names from articles
     local seen = {}
@@ -575,35 +648,64 @@ function QuickRSSUI:_openFilterDialog()
     end
     table.sort(feed_names)
 
-    local RadioButtonWidget = require("ui/widget/radiobuttonwidget")
-    local radio_buttons = {
-        {{ text = _("All Feeds"), provider = "", checked = (self.filter_feed == nil) }},
+    local check = "\u{f00c}  "  -- NerdFont check mark prefix
+    local dialog
+    local buttons = {
+        -- Unread toggle at the top
+        {{ text = Icons.BOOK .. "  " .. (self.filter_unread
+                and _("Showing Unread Only")
+                or  _("Show Unread Only")),
+           callback = function()
+               UIManager:close(dialog)
+               self.filter_unread = not self.filter_unread
+               self:_updateFilterButton()
+               self:_applyFilter()
+           end
+        }},
+        -- All Feeds
+        {{ text = (self.filter_feed == nil and check or "") .. _("All Feeds"),
+           callback = function()
+               UIManager:close(dialog)
+               self.filter_feed = nil
+               self:_updateFilterButton()
+               self:_applyFilter()
+           end
+        }},
     }
     for _, name in ipairs(feed_names) do
-        table.insert(radio_buttons, {
-            { text = name, provider = name, checked = (self.filter_feed == name) },
+        table.insert(buttons, {
+            { text = (self.filter_feed == name and check or "") .. name,
+              callback = function()
+                  UIManager:close(dialog)
+                  self.filter_feed = name
+                  self:_updateFilterButton()
+                  self:_applyFilter()
+              end
+            }
         })
     end
 
-    UIManager:show(RadioButtonWidget:new{
-        title_text = _("Filter by Feed"),
-        cancel_text = _("Close"),
-        ok_text = _("Apply"),
-        radio_buttons = radio_buttons,
-        callback = function(radio)
-            if radio.provider == "" then
-                self.filter_feed = nil
-                self.filter_button:setText(
-                    Icons.FILTER .. "  " .. _("All Feeds"))
-            else
-                self.filter_feed = radio.provider
-                self.filter_button:setText(
-                    Icons.FILTER .. "  " .. radio.provider)
-            end
-            self:_rebuildFooter()
-            self:_applyFilter()
-        end,
-    })
+    dialog = ButtonDialog:new{
+        title = _("Filter Articles"),
+        title_align = "center",
+        buttons = buttons,
+    }
+    UIManager:show(dialog)
+end
+
+-- Update the filter button text to reflect current feed + unread state.
+function QuickRSSUI:_updateFilterButton()
+    local label = Icons.FILTER .. "  "
+    if self.filter_feed then
+        label = label .. self.filter_feed
+    else
+        label = label .. _("All Feeds")
+    end
+    if self.filter_unread then
+        label = label .. " (" .. _("Unread") .. ")"
+    end
+    self.filter_button:setText(label)
+    self:_rebuildFooter()
 end
 
 -- Rebuild footer layout after filter button text changes.
@@ -659,6 +761,12 @@ function QuickRSSUI:_showArticleMenu(article)
                         height = Screen:getHeight(),
                     })
                 end
+            end }},
+            {{ text = Icons.BOOK .. "  " .. (article.read and _("Mark as Unread") or _("Mark as Read")), callback = function()
+                UIManager:close(dialog)
+                article.read = not article.read
+                Cache.saveArticles(self.articles)
+                self:_applyFilter(true)
             end }},
             {{ text = Icons.CLEAR .. "  " .. _("Delete From Cache"), callback = function()
                 UIManager:close(dialog)
@@ -739,6 +847,15 @@ function QuickRSSUI:_populateItems()
             art_settings = art_settings,
             -- Tap opens the article in the HTML reader.
             callback = function(article)
+                if not article.read then
+                    article.read = true
+                    Cache.saveArticles(self.articles)
+                    if self.filter_unread then
+                        self:_applyFilter(true)
+                    else
+                        self:_populateItems()
+                    end
+                end
                 local InfoMessage = require("ui/widget/infomessage")
                 local msg = InfoMessage:new{
                     text = _("Opening ") .. article.title,
@@ -751,6 +868,14 @@ function QuickRSSUI:_populateItems()
                         article       = article,
                         articles      = articles,
                         article_index = i,
+                        on_close      = function()
+                            Cache.saveArticles(self.articles)
+                            if self.filter_unread then
+                                self:_applyFilter(true)
+                            else
+                                self:_populateItems()
+                            end
+                        end,
                     })
                     UIManager:close(msg)
                 end)

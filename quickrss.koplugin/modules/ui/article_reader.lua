@@ -133,6 +133,7 @@ local ArticleReader = InputContainer:extend{
     article       = nil,   -- populated by caller
     articles      = nil,   -- optional: full list for prev/next navigation
     article_index = 0,     -- position of `article` within `articles`
+    on_close      = nil,   -- callback when user exits the reader (not on navigate)
 }
 
 function ArticleReader:init()
@@ -440,6 +441,9 @@ function ArticleReader:onClose()
     UIManager:close(self)
     -- Full e-ink flash so the feed list underneath redraws without ghosting.
     UIManager:setDirty(nil, "full")
+    if not self._navigating and self.on_close then
+        self.on_close()
+    end
 end
 
 -- Trigger a full e-ink flash on first display to clear ghosting.
@@ -471,11 +475,15 @@ function ArticleReader:_navigateTo(new_idx)
     or new_idx < 1 or new_idx > #self.articles then
         return
     end
+    local target = self.articles[new_idx]
+    target.read = true  -- mark on shared object; saved when user exits reader
+    self._navigating = true  -- suppress on_close callback
     UIManager:close(self)
     UIManager:show(ArticleReader:new{
-        article       = self.articles[new_idx],
+        article       = target,
         articles      = self.articles,
         article_index = new_idx,
+        on_close      = self.on_close,  -- pass through
     })
 end
 

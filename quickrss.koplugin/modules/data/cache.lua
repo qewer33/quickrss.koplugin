@@ -62,6 +62,7 @@ end
 function Cache.clearCache()
     settings()
         :saveSetting("articles", nil)
+        :saveSetting("dismissed", nil)
         :flush()
     -- Reset the in-memory handle so next load re-reads from disk cleanly
     _settings = nil
@@ -77,6 +78,19 @@ function Cache.clearCache()
             end
         end
     end
+end
+
+-- Returns the set of dismissed article links (articles the user deleted after
+-- reading).  These are excluded from future fetches so they don't reappear.
+function Cache.loadDismissed()
+    return settings():readSetting("dismissed") or {}
+end
+
+-- Persists the dismissed link set.
+function Cache.saveDismissed(dismissed)
+    settings()
+        :saveSetting("dismissed", dismissed)
+        :flush()
 end
 
 -- Deletes image files in IMAGE_DIR that are not referenced by any article.

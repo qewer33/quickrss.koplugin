@@ -9,12 +9,17 @@ A fast, standalone and easy to use RSS reader plugin for [KOReader](https://gith
 **Feed list view**
 - Thumbnail cards with a 16:9 cover-cropped image, bold title, source · date line, and a snippet preview
 - Paginated list with swipe or hardware page-turn key navigation
+- Read/unread tracking — unread articles show bold titles, read articles show regular weight
+- Filter by feed, unread-only, or both
 - Pull-to-refresh fetches all feeds and updates the cache in one tap
 
 **Article reader**
 - Full HTML rendering via KOReader's built-in engine (paragraphs, bold, lists, images)
 - Banner image at the top, followed by title, source · date · estimated reading time
 - Swipe left/right or use the footer buttons to move between articles
+- Articles are automatically marked as read when opened or navigated to
+- Tap any link to copy it to clipboard or show a QR code for scanning on another device
+- Tap any image for a full-screen preview
 - Full e-ink refresh on open to eliminate ghosting
 
 **Reader customisation**
@@ -79,6 +84,12 @@ Tap **≡** → **Fetch Articles**. QuickRSS fetches all configured feeds, downl
 
 Tap any card in the list to open the article reader. Swipe left/right or tap the **◀** / **▶** footer buttons to navigate between articles. Tap **✕** to return to the feed list.
 
+Articles are automatically marked as read when you open or swipe to them. You can also long-press an article in the feed list to toggle its read/unread state manually.
+
+Tapping a link inside an article opens a menu with **Copy Link** (to clipboard) and **Show QR Code** (for easy transfer to a phone or computer). Tapping an image opens a full-screen preview.
+
+Long-pressing an article card in the feed list shows a context menu with the article link, **Copy Link**, **Show QR Code**, **Mark as Read/Unread**, and **Delete From Cache**.
+
 ### Settings
 
 Tap **≡** → **Settings** to configure:
@@ -92,12 +103,29 @@ Tap **≡** → **Settings** to configure:
 | Card font size | 14 | Font size for article cards in the feed list |
 | Full-text extraction | On | Fetch full article text for truncated feeds via extraction service |
 | Extraction URL | Default | URL of the full-text extraction service (for self-hosted instances) |
+| Custom DNS routing | Off | Use alternative DNS servers to fix missing images on some devices (see below) |
 
 Reader font, font size, and line spacing can be changed from within any open article via the **⚙** icon in the title bar.
 
-### Clearing the cache
+### Custom DNS routing
 
-Tap **≡** → **Clear Cache** to wipe all cached articles and images. The next **Fetch Articles** will start fresh.
+If some thumbnails or article images fail to load even though your device is connected to WiFi, try enabling **Custom DNS routing** in Settings. This is a known issue on some e-readers (notably Kobo) where the device's built-in name resolution stops working reliably after running for a while. The setting routes lookups through Google and Cloudflare DNS instead, which usually fixes the problem.
+
+If your images are loading fine, you can leave this off.
+
+### Filtering articles
+
+Tap the filter button in the footer (shows **All Feeds** by default) to open the filter dialog. From here you can:
+
+- **Show Unread Only** — toggle to hide already-read articles
+- **Select a feed** — show articles from a single feed only
+
+Both filters can be combined. The filter button text updates to reflect the active filters (e.g. "Ars Technica (Unread)").
+
+### Clearing articles
+
+- **≡** → **Clear Read** — removes all read articles from the cache. Their links are remembered so they won't reappear on future fetches.
+- **≡** → **Clear Cache** — wipes all cached articles, images, and the dismissed article list. The next **Fetch Articles** will start completely fresh.
 
 ## Project structure
 

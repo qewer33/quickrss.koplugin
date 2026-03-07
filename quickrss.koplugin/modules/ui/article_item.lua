@@ -84,7 +84,9 @@ function ArticleItem:init()
     local s = self.art_settings
         or require("modules/data/config").getArticleSettings()
     local sz = s.card_font_size
-    local title_face   = Font:getFace("smallinfofontbold", sz + 1)
+    local title_face   = self.article.read
+        and Font:getFace("smallinfofont", sz + 1)
+        or  Font:getFace("smallinfofontbold", sz + 1)
     local snippet_face = Font:getFace("smallinfofont", sz)
     local meta_face    = Font:getFace("smallinfofont", math.max(8, sz - 2))
 
