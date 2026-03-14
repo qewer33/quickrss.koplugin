@@ -91,8 +91,9 @@ local function stripLeadingTitle(html, title)
 end
 
 -- ── CSS ───────────────────────────────────────────────────────────────────────
--- MuPDF does not scale CSS pixel values, so font-size uses pt and spacing
--- uses unitless ratios.  line_spacing is stored as an integer x10 (15 = 1.5).
+-- MuPDF does not DPI-scale CSS pt values, so we must scale font-size ourselves
+-- via Screen:scaleBySize() to match KOReader's native font sizing.
+-- line_spacing is stored as an integer x10 (15 = 1.5).
 -- When the user picks a font file we load it via @font-face so MuPDF uses the
 -- exact file rather than trying to match a family name.
 local function makeCSS(prefs)
@@ -104,12 +105,13 @@ local function makeCSS(prefs)
             prefs.font_file)
         font_family = '"UserFont", serif'
     end
+    local scaled_size = Screen:scaleBySize(prefs.font_size)
     return font_face_rule .. string.format([[
 @page { margin: 0; }
 body {
     margin: 0;
     font-family: %s;
-    font-size: %dpt;
+    font-size: %.1fpt;
     line-height: %.1f;
     text-align: justify;
 }
@@ -125,7 +127,7 @@ a                    { text-decoration: underline; }
 .meta                { font-size: 0.85em; margin: 0 0 0.8em; }
 hr                   { border: none; border-top: 1px solid #999999; margin: 0.8em 0 1em; }
 figure               { text-align: center; margin: 0.5em 0; }
-]], font_family, prefs.font_size, prefs.line_spacing / 10)
+]], font_family, scaled_size, prefs.line_spacing / 10)
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────

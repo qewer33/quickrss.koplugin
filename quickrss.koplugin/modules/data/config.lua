@@ -122,7 +122,7 @@ end
 
 local DEFAULT_READER_SETTINGS = {
     font_file    = "",   -- "" = let MuPDF use its default serif
-    font_size    = 18,   -- pt
+    font_size    = 21.0, -- pt (matches KOReader's default)
     line_spacing = 15,   -- x10 (15 → 1.5)
 }
 

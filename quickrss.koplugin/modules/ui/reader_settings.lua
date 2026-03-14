@@ -100,7 +100,7 @@ function ReaderSettingsUI:init()
         face = VALUE_FACE,
     }
     self.size_val    = TextWidget:new{
-        text = tostring(self.s.font_size) .. " pt",
+        text = string.format("%.1f pt", self.s.font_size),
         face = VALUE_FACE,
     }
     self.spacing_val = TextWidget:new{
@@ -141,15 +141,16 @@ function ReaderSettingsUI:init()
             title_text      = _("Font size"),
             value           = self.s.font_size,
             value_min       = 12,
-            value_max       = 64,
-            value_step      = 1,
-            value_hold_step = 2,
-            default_value   = 18,
+            value_max       = 255,
+            value_step      = 0.5,
+            value_hold_step = 4,
+            default_value   = 21,
+            precision       = "%.1f",
             unit            = _("pt"),
             callback = function(spin)
                 self.s.font_size = spin.value
                 Config.saveReaderSettings(self.s)
-                self.size_val:setText(spin.value .. " pt")
+                self.size_val:setText(string.format("%.1f pt", spin.value))
                 self.rows_group:resetLayout()
                 UIManager:setDirty(self, function() return "ui", self.dimen end)
                 if self.on_change then self.on_change(self.s) end
