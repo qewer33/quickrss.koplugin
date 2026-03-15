@@ -10,7 +10,7 @@ A fast, standalone and easy to use RSS reader plugin for [KOReader](https://gith
 - Thumbnail cards with a 16:9 cover-cropped image, bold title, source · date line, and a snippet preview
 - Paginated list with swipe or hardware page-turn key navigation
 - Read/unread tracking — unread articles show bold titles, read articles show regular weight
-- Filter by feed, unread-only, or both
+- Filter by feed, unread-only, saved-only, or any combination
 - Pull-to-refresh fetches all feeds and updates the cache in one tap
 
 **Article reader**
@@ -88,7 +88,13 @@ Articles are automatically marked as read when you open or swipe to them. You ca
 
 Tapping a link inside an article opens a menu with **Copy Link** (to clipboard) and **Show QR Code** (for easy transfer to a phone or computer). Tapping an image opens a full-screen preview.
 
-Long-pressing an article card in the feed list shows a context menu with the article link, **Copy Link**, **Show QR Code**, **Mark as Read/Unread**, and **Delete From Cache**.
+Long-pressing an article card in the feed list (or tapping the title in the reader) shows a context menu with **Save/Unsave Article**, **Copy Link**, **Show QR Code**, **Mark as Read/Unread**, and **Delete From Cache**.
+
+### Saving articles
+
+Tap **Save Article** in the article context menu to bookmark an article. Saved articles are protected from all cache operations — they survive **Delete Read**, **Delete All Cache**, and cache expiry. You can view only saved articles using the **Show Saved Only** filter.
+
+To remove saved articles, use **≡** → **Delete Saved**, or unsave them individually from the context menu.
 
 ### Settings
 
@@ -118,14 +124,16 @@ If your images are loading fine, you can leave this off.
 Tap the filter button in the footer (shows **All Feeds** by default) to open the filter dialog. From here you can:
 
 - **Show Unread Only** — toggle to hide already-read articles
+- **Show Saved Only** — toggle to show only saved/bookmarked articles
 - **Select a feed** — show articles from a single feed only
 
-Both filters can be combined. The filter button text updates to reflect the active filters (e.g. "Ars Technica (Unread)").
+All filters can be combined. The filter button text updates to reflect the active filters (e.g. "Ars Technica (Unread, Saved)").
 
-### Clearing articles
+### Deleting articles
 
-- **≡** → **Clear Read** — removes all read articles from the cache. Their links are remembered so they won't reappear on future fetches.
-- **≡** → **Clear Cache** — wipes all cached articles, images, and the dismissed article list. The next **Fetch Articles** will start completely fresh.
+- **≡** → **Delete Read** — removes all read articles from the cache (saved articles are kept). Their links are remembered so they won't reappear on future fetches.
+- **≡** → **Delete Saved** — removes all saved/bookmarked articles from the cache.
+- **≡** → **Delete All Cache** — wipes all cached articles, images, and the dismissed article list (saved articles are preserved). The next **Fetch Articles** will start fresh.
 
 ## Project structure
 

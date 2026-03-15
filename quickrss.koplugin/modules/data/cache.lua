@@ -36,7 +36,7 @@ function Cache.loadArticles(max_age_days)
     local cutoff = os.time() - max_age_days * 86400
     local fresh  = {}
     for _, art in ipairs(all) do
-        if (art.fetched_at or 0) >= cutoff then
+        if art.saved or (art.fetched_at or 0) >= cutoff then
             table.insert(fresh, art)
         end
     end
@@ -57,20 +57,45 @@ function Cache.saveArticles(articles)
         :flush()
 end
 
--- Wipes the entire article cache and all cached images.
--- After this call loadArticles() returns {} until the next fetch.
+-- Wipes the article cache and all cached images, preserving saved articles.
+-- After this call loadArticles() returns only saved articles until the next fetch.
 function Cache.clearCache()
+    local all = settings():readSetting("articles") or {}
+    local saved = {}
+    for _, art in ipairs(all) do
+        if art.saved then
+            table.insert(saved, art)
+        end
+    end
+
     settings()
-        :saveSetting("articles", nil)
+        :saveSetting("articles", #saved > 0 and saved or nil)
         :saveSetting("dismissed", nil)
         :flush()
     -- Reset the in-memory handle so next load re-reads from disk cleanly
     _settings = nil
 
+    -- Build set of image files still needed by saved articles
+    local keep = {}
+    for _, art in ipairs(saved) do
+        if art.image_path then
+            local fname = art.image_path:match("([^/]+)$")
+            if fname then keep[fname] = true end
+        end
+        if art.content then
+            for fname in art.content:gmatch('[Ss][Rr][Cc]%s*=%s*"([^"/]+)"') do
+                keep[fname] = true
+            end
+            for fname in art.content:gmatch("[Ss][Rr][Cc]%s*=%s*'([^'/]+)'") do
+                keep[fname] = true
+            end
+        end
+    end
+
     local ok = lfs.attributes(IMAGE_DIR, "mode") == "directory"
-    if not ok then return end
+    if not ok then return saved end
     for fname in lfs.dir(IMAGE_DIR) do
-        if fname ~= "." and fname ~= ".." then
+        if fname ~= "." and fname ~= ".." and not keep[fname] then
             local path = IMAGE_DIR .. "/" .. fname
             local removed, err = os.remove(path)
             if not removed then
@@ -78,6 +103,7 @@ function Cache.clearCache()
             end
         end
     end
+    return saved
 end
 
 -- Returns the set of dismissed article links (articles the user deleted after

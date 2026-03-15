@@ -108,6 +108,7 @@ local QuickRSSUI = InputContainer:extend{
     filtered       = nil,    -- filtered subset, or nil when showing all
     filter_feed    = nil,    -- name of the active feed filter, or nil for all
     filter_unread  = false,  -- when true, show only unread articles
+    filter_saved   = false,  -- when true, show only saved articles
 }
 
 function QuickRSSUI:init()
@@ -378,20 +379,25 @@ function QuickRSSUI:_fetch()
             if #articles == 0 then
                 self:_showStatus(_("No articles found.\nCheck your feeds."))
             else
-                -- Preserve read state from old articles
-                local old_read = {}
+                -- Preserve read and saved state from old articles
+                local old_read  = {}
+                local old_saved = {}
                 for _, art in ipairs(self.articles) do
-                    if art.read and art.link then old_read[art.link] = true end
+                    if art.link then
+                        if art.read  then old_read[art.link]  = true end
+                        if art.saved then old_saved[art.link] = true end
+                    end
                 end
                 for _, art in ipairs(articles) do
-                    if old_read[art.link] then art.read = true end
+                    if old_read[art.link]  then art.read  = true end
+                    if old_saved[art.link] then art.saved = true end
                 end
-                -- Filter out dismissed articles
+                -- Filter out dismissed articles (but keep saved ones)
                 local dismissed = Cache.loadDismissed()
                 if next(dismissed) then
                     local kept = {}
                     for _, art in ipairs(articles) do
-                        if not (art.link and dismissed[art.link]) then
+                        if art.saved or not (art.link and dismissed[art.link]) then
                             table.insert(kept, art)
                         end
                     end
@@ -496,15 +502,19 @@ function QuickRSSUI:_openMenu()
             },
             -- Destructive actions side by side
             {
-                { text = Icons.CLEAR .. "  " .. _("Clear Read"), callback = function()
+                { text = Icons.CLEAR .. "  " .. _("Delete Read"), callback = function()
                     UIManager:close(dialog)
                     self:_clearReadArticles()
                 end },
-                { text = Icons.CLEAR .. "  " .. _("Clear Cache"), callback = function()
+                { text = Icons.CLEAR .. "  " .. _("Delete Saved"), callback = function()
                     UIManager:close(dialog)
-                    self:_clearCache()
+                    self:_deleteSavedArticles()
                 end },
             },
+            {{ text = Icons.CLEAR .. "  " .. _("Delete All Cache"), callback = function()
+                UIManager:close(dialog)
+                self:_clearCache()
+            end }},
             {{ text = Icons.INFO .. "  " .. _("About"), callback = function()
                 UIManager:close(dialog)
                 self:_openAbout()
@@ -521,14 +531,19 @@ function QuickRSSUI:_clearCache()
         text = _("Clear all cached articles and images?"),
         ok_text = _("Clear"),
         ok_callback = function()
-            Cache.clearCache()
-            self.articles      = {}
+            local saved = Cache.clearCache()
+            self.articles      = saved
             self.filtered      = nil
             self.filter_feed   = nil
             self.filter_unread = false
+            self.filter_saved  = false
             self.show_page     = 1
             self:_updateFilterButton()
-            self:_showStatus(_("Cache cleared.\nOpen the menu to fetch."))
+            if #saved > 0 then
+                self:_applyFilter()
+            else
+                self:_showStatus(_("Cache cleared.\nOpen the menu to fetch."))
+            end
         end,
     })
 end
@@ -538,7 +553,7 @@ end
 function QuickRSSUI:_clearReadArticles()
     local read_count = 0
     for _, art in ipairs(self.articles) do
-        if art.read then read_count = read_count + 1 end
+        if art.read and not art.saved then read_count = read_count + 1 end
     end
     if read_count == 0 then
         UIManager:show(InfoMessage:new{
@@ -552,11 +567,11 @@ function QuickRSSUI:_clearReadArticles()
         text = T(_("Clear %1 read article(s)?\nThey won't reappear on future fetches."), read_count),
         ok_text = _("Clear"),
         ok_callback = function()
-            -- Add read article links to the dismissed set
+            -- Add read article links to the dismissed set (skip saved articles)
             local dismissed = Cache.loadDismissed()
             local kept = {}
             for _, art in ipairs(self.articles) do
-                if art.read and art.link then
+                if art.read and not art.saved and art.link then
                     dismissed[art.link] = true
                     if art.image_path then os.remove(art.image_path) end
                 else
@@ -567,6 +582,42 @@ function QuickRSSUI:_clearReadArticles()
             self.articles = kept
             Cache.saveArticles(self.articles)
             Cache.cleanOrphanedImages(self.articles)
+            self:_applyFilter()
+        end,
+    })
+end
+
+-- Remove all saved articles from the cache.
+function QuickRSSUI:_deleteSavedArticles()
+    local saved_count = 0
+    for _, art in ipairs(self.articles) do
+        if art.saved then saved_count = saved_count + 1 end
+    end
+    if saved_count == 0 then
+        UIManager:show(InfoMessage:new{
+            text = _("No saved articles to delete."),
+        })
+        return
+    end
+
+    local ConfirmBox = require("ui/widget/confirmbox")
+    UIManager:show(ConfirmBox:new{
+        text = T(_("Delete %1 saved article(s)?"), saved_count),
+        ok_text = _("Delete"),
+        ok_callback = function()
+            local kept = {}
+            for _, art in ipairs(self.articles) do
+                if art.saved then
+                    if art.image_path then os.remove(art.image_path) end
+                else
+                    table.insert(kept, art)
+                end
+            end
+            self.articles = kept
+            Cache.saveArticles(self.articles)
+            Cache.cleanOrphanedImages(self.articles)
+            self.filter_saved = false
+            self:_updateFilterButton()
             self:_applyFilter()
         end,
     })
@@ -627,6 +678,15 @@ function QuickRSSUI:_applyFilter(keep_page)
         end
         list = unread
     end
+    if self.filter_saved then
+        local saved = {}
+        for _, art in ipairs(list) do
+            if art.saved then
+                table.insert(saved, art)
+            end
+        end
+        list = saved
+    end
     self.filtered = (list ~= self.articles) and list or nil
     if not keep_page then
         self.show_page = 1
@@ -650,13 +710,24 @@ function QuickRSSUI:_openFilterDialog()
     local check = "\u{f00c}  "  -- NerdFont check mark prefix
     local dialog
     local buttons = {
-        -- Unread toggle at the top
+        -- Unread toggle
         {{ text = Icons.BOOK .. "  " .. (self.filter_unread
                 and _("Showing Unread Only")
                 or  _("Show Unread Only")),
            callback = function()
                UIManager:close(dialog)
                self.filter_unread = not self.filter_unread
+               self:_updateFilterButton()
+               self:_applyFilter()
+           end
+        }},
+        -- Saved toggle
+        {{ text = Icons.SAVE .. "  " .. (self.filter_saved
+                and _("Showing Saved Only")
+                or  _("Show Saved Only")),
+           callback = function()
+               UIManager:close(dialog)
+               self.filter_saved = not self.filter_saved
                self:_updateFilterButton()
                self:_applyFilter()
            end
@@ -700,8 +771,11 @@ function QuickRSSUI:_updateFilterButton()
     else
         label = label .. _("All Feeds")
     end
-    if self.filter_unread then
-        label = label .. " (" .. _("Unread") .. ")"
+    local filters = {}
+    if self.filter_unread then table.insert(filters, _("Unread")) end
+    if self.filter_saved  then table.insert(filters, _("Saved"))  end
+    if #filters > 0 then
+        label = label .. " (" .. table.concat(filters, ", ") .. ")"
     end
     self.filter_button:setText(label)
     self:_rebuildFooter()

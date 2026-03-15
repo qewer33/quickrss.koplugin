@@ -17,4 +17,5 @@ return {
     TRANSLATE = "\u{f0ac}",  -- 🌐 globe
     SEARCH    = "\u{f002}",  -- 🔍 magnifying glass
     QRCODE    = "\u{f029}",  -- ▣  QR code
+    SAVE      = "\u{f02e}",  -- 🔖 bookmark
 }

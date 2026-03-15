@@ -41,6 +41,12 @@ function ArticleMenu.show(article, articles, on_change)
         title = article.title,
         use_info_style = false,
         buttons = {
+            {{ text = Icons.SAVE .. "  " .. (article.saved and _("Unsave Article") or _("Save Article")), callback = function()
+                UIManager:close(dialog)
+                article.saved = not article.saved
+                Cache.saveArticles(articles)
+                if on_change then on_change() end
+            end }},
             {{ text = Icons.COPY .. "  " .. _("Copy Link"), callback = function()
                 UIManager:close(dialog)
                 if article.link and article.link ~= "" then
