@@ -183,6 +183,17 @@ function ArticleReader:init()
     }
     local title_h = title_bar:getSize().h
 
+    -- Make the title text area tappable to show the article context menu.
+    -- Icon buttons (~44px each side) consume their own taps, so we only
+    -- need to handle taps in the middle region of the title bar.
+    local icon_w = Screen:scaleBySize(44)
+    self.ges_events.TapTitle = {
+        GestureRange:new{
+            ges   = "tap",
+            range = Geom:new{ x = icon_w, y = 0, w = screen_w - icon_w * 2, h = title_h },
+        },
+    }
+
     -- ── Prev / Next navigation footer ─────────────────────────────────────────
     local nav_footer_widget = nil
     local footer_h          = 0
@@ -390,6 +401,23 @@ function ArticleReader:_openReaderSettings()
             self:_applyPrefs(prefs)
         end,
     })
+end
+
+function ArticleReader:onTapTitle()
+    local ArticleMenu = require("modules/ui/article_menu")
+    ArticleMenu.show(self.article, self.articles, function()
+        -- If the article was deleted, close the reader
+        local found = false
+        if self.articles then
+            for _, a in ipairs(self.articles) do
+                if a == self.article then found = true; break end
+            end
+        end
+        if not found then
+            self:onClose()
+        end
+    end)
+    return true
 end
 
 function ArticleReader:_applyPrefs(prefs)

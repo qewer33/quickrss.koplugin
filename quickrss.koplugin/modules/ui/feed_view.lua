@@ -21,7 +21,6 @@ local LineWidget      = require("ui/widget/linewidget")
 local Cache           = require("modules/data/cache")
 local lfs             = require("libs/libkoreader-lfs")
 local Parser          = require("modules/data/parser")
-local QRMessage       = require("ui/widget/qrmessage")
 local Size            = require("ui/size")
 local T               = require("ffi/util").template
 local TextBoxWidget   = require("ui/widget/textboxwidget")
@@ -726,97 +725,10 @@ end
 
 -- Long-press context menu for a single article.
 function QuickRSSUI:_showArticleMenu(article)
-    -- Build a two-line title: bold title + source · date
-    local meta_parts = {}
-    if article.source and article.source ~= "" then
-        table.insert(meta_parts, article.source)
-    end
-    if article.date and article.date ~= "" then
-        local d = article.date:match("%a+,%s+(%d+%s+%a+%s+%d+)")
-            or article.date:match("(%d%d%d%d%-%d%d%-%d%d)")
-            or article.date
-        table.insert(meta_parts, d)
-    end
-    local dialog
-    dialog = ButtonDialog:new{
-        title = article.title,
-        use_info_style = false,
-        buttons = {
-            {{ text = Icons.COPY .. "  " .. _("Copy Link"), callback = function()
-                UIManager:close(dialog)
-                if article.link and article.link ~= "" then
-                    Device.input.setClipboardText(article.link)
-                    local Notification = require("ui/widget/notification")
-                    UIManager:show(Notification:new{
-                        text = _("Link copied to clipboard"),
-                    })
-                end
-            end }},
-            {{ text = Icons.INFO .. "  " .. _("Show QR Code"), callback = function()
-                UIManager:close(dialog)
-                if article.link and article.link ~= "" then
-                    UIManager:show(QRMessage:new{
-                        text   = article.link,
-                        width  = Screen:getWidth(),
-                        height = Screen:getHeight(),
-                    })
-                end
-            end }},
-            {{ text = Icons.BOOK .. "  " .. (article.read and _("Mark as Unread") or _("Mark as Read")), callback = function()
-                UIManager:close(dialog)
-                article.read = not article.read
-                Cache.saveArticles(self.articles)
-                self:_applyFilter(true)
-            end }},
-            {{ text = Icons.CLEAR .. "  " .. _("Delete From Cache"), callback = function()
-                UIManager:close(dialog)
-                self:_deleteArticle(article)
-            end }},
-        },
-    }
-    local extra = VerticalGroup:new{ align = "left" }
-    if #meta_parts > 0 then
-        table.insert(extra, TextBoxWidget:new{
-            text      = table.concat(meta_parts, " · "),
-            face      = Font:getFace("cfont", 14),
-            width     = dialog.title_group_width,
-            alignment = "left",
-        })
-    end
-    if article.link and article.link ~= "" then
-        if #meta_parts > 0 then
-            table.insert(extra, VerticalSpan:new{ width = Screen:scaleBySize(8) })
-        end
-        table.insert(extra, TextBoxWidget:new{
-            text      = article.link,
-            face      = Font:getFace("cfont", 12),
-            width     = dialog.title_group_width,
-            alignment = "left",
-        })
-    end
-    if #extra > 0 then
-        dialog:addWidget(extra)
-    end
-    UIManager:show(dialog)
-end
-
--- Remove a single article from the cache and refresh the list.
-function QuickRSSUI:_deleteArticle(article)
-    -- Remove from main list
-    for i = #self.articles, 1, -1 do
-        if self.articles[i] == article then
-            table.remove(self.articles, i)
-            break
-        end
-    end
-    -- Remove associated thumbnail
-    if article.image_path then
-        os.remove(article.image_path)
-    end
-    -- Persist and refresh
-    Cache.saveArticles(self.articles)
-    Cache.cleanOrphanedImages(self.articles)
-    self:_applyFilter()
+    local ArticleMenu = require("modules/ui/article_menu")
+    ArticleMenu.show(article, self.articles, function()
+        self:_applyFilter(true)
+    end)
 end
 
 -- Rebuild article_list for the current page and request a display refresh.
