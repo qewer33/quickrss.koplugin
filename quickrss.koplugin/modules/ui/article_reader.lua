@@ -14,6 +14,7 @@ local Blitbuffer       = require("ffi/blitbuffer")
 local Button           = require("ui/widget/button")
 local Config           = require("modules/data/config")
 local Device           = require("device")
+local Event            = require("ui/event")
 local FrameContainer   = require("ui/widget/container/framecontainer")
 local Geom             = require("ui/geometry")
 local GestureRange     = require("ui/gesturerange")
@@ -26,10 +27,12 @@ local LineWidget       = require("ui/widget/linewidget")
 local ButtonDialog     = require("ui/widget/buttondialog")
 local Font             = require("ui/font")
 local Icons            = require("modules/ui/icons")
+local Notification     = require("ui/widget/notification")
 local QRMessage        = require("ui/widget/qrmessage")
 local ScrollHtmlWidget = require("ui/widget/scrollhtmlwidget")
 local Size             = require("ui/size")
 local TitleBar         = require("ui/widget/titlebar")
+local Translator       = require("ui/translator")
 local UIManager        = require("ui/uimanager")
 local VerticalGroup    = require("ui/widget/verticalgroup")
 local _                = require("gettext")
@@ -147,11 +150,23 @@ function ArticleReader:init()
     }
 
     -- Swipe left/right to navigate between articles
+    local full_range = Geom:new{ x = 0, y = 0, w = screen_w, h = screen_h }
     self.ges_events.Swipe = {
-        GestureRange:new{
-            ges   = "swipe",
-            range = Geom:new{ x = 0, y = 0, w = screen_w, h = screen_h },
-        },
+        GestureRange:new{ ges = "swipe", range = full_range },
+    }
+
+    -- Text selection gestures (propagated to HtmlBoxWidget)
+    self.ges_events.HoldStartText = {
+        GestureRange:new{ ges = "hold", range = full_range },
+    }
+    self.ges_events.HoldPanText = {
+        GestureRange:new{ ges = "hold_pan", range = full_range },
+    }
+    self.ges_events.HoldReleaseText = {
+        GestureRange:new{ ges = "hold_release", range = full_range },
+        args = function(text)
+            self:_showTextMenu(text)
+        end,
     }
 
     self.prefs = Config.getReaderSettings()
@@ -348,6 +363,7 @@ function ArticleReader:init()
         height                  = self.scroll_h,
         dialog                  = self,
         html_resource_directory = IMAGE_DIR,
+        highlight_text_selection = true,
         html_link_tapped_callback = function(link)
             self:_onLinkTapped(link)
         end,
@@ -385,6 +401,7 @@ function ArticleReader:_applyPrefs(prefs)
         height                  = self.scroll_h,
         dialog                  = self,
         html_resource_directory = IMAGE_DIR,
+        highlight_text_selection = true,
         html_link_tapped_callback = function(link)
             self:_onLinkTapped(link)
         end,
@@ -421,7 +438,6 @@ function ArticleReader:_showLinkMenu(url)
             {{ text = Icons.COPY .. "  " .. _("Copy Link"), callback = function()
                 UIManager:close(dialog)
                 Device.input.setClipboardText(url)
-                local Notification = require("ui/widget/notification")
                 UIManager:show(Notification:new{
                     text = _("Link copied to clipboard"),
                 })
@@ -437,6 +453,64 @@ function ArticleReader:_showLinkMenu(url)
         },
     }
     UIManager:show(dialog)
+end
+
+function ArticleReader:_showTextMenu(text)
+    if not text or text == "" then return end
+    local dialog
+    -- Truncate display title to keep the dialog tidy
+    local display = text
+    if #display > 80 then
+        display = display:sub(1, 77) .. "…"
+    end
+    dialog = ButtonDialog:new{
+        title = display,
+        title_face = Font:getFace("cfont", 14),
+        buttons = {
+            {
+                { text = Icons.COPY .. "  " .. _("Copy"), callback = function()
+                    UIManager:close(dialog)
+                    Device.input.setClipboardText(text)
+                    UIManager:show(Notification:new{
+                        text = _("Copied to clipboard"),
+                    })
+                end },
+                { text = Icons.DICT .. "  " .. _("Dictionary"), callback = function()
+                    UIManager:close(dialog)
+                    self:_lookupText(text)
+                end },
+            },
+            {
+                { text = Icons.TRANSLATE .. "  " .. _("Translate"), callback = function()
+                    UIManager:close(dialog)
+                    Translator:showTranslation(text)
+                end },
+                { text = Icons.QRCODE .. "  " .. _("QR Code"), callback = function()
+                    UIManager:close(dialog)
+                    UIManager:show(QRMessage:new{
+                        text   = text,
+                        width  = Screen:getWidth(),
+                        height = Screen:getHeight(),
+                    })
+                end },
+            },
+        },
+    }
+    UIManager:show(dialog)
+end
+
+-- Dispatch dictionary lookup to the active FileManager or ReaderUI instance.
+function ArticleReader:_lookupText(text)
+    local FileManager = require("apps/filemanager/filemanager")
+    local ReaderUI = require("apps/reader/readerui")
+    local ui = ReaderUI.instance or FileManager.instance
+    if ui then
+        ui:handleEvent(Event:new("LookupWord", text))
+    else
+        UIManager:show(Notification:new{
+            text = _("No dictionary available"),
+        })
+    end
 end
 
 function ArticleReader:onClose()
